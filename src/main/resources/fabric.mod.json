@@ -1,0 +1,41 @@
+{
+	"schemaVersion": 1,
+	"id": "seed-cracker",
+	"version": "${version}",
+	"name": "Seed Cracker",
+	"description": "Works out the world seed from the bedrock in the Nether: go to the Nether, run /seedcracker start, and within a minute or so the seed shows up in chat. Uses only the blocks your client already has.",
+	"authors": [
+		"ErrolMc"
+	],
+	"contact": {
+		"sources": "https://github.com/ErrolMc/mc-seed-cracker",
+		"issues": "https://github.com/ErrolMc/mc-seed-cracker/issues"
+	},
+	"license": "MIT",
+	"icon": "assets/seed-cracker/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"com.errolmc.seedcracker.client.SeedCrackerClient"
+		],
+		"modmenu": [
+			"com.errolmc.seedcracker.client.config.ModMenuIntegration"
+		]
+	},
+	"mixins": [
+		{
+			"config": "seed-cracker.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	},
+	"recommends": {
+		"modmenu": "*",
+		"cloth-config": "*"
+	}
+}

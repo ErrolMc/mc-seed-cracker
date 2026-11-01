@@ -1,0 +1,14 @@
+{
+	"required": true,
+	"package": "com.errolmc.seedcracker.client.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"BiomeManagerAccessor"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}

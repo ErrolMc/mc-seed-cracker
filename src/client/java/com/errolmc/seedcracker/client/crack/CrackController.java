@@ -32,15 +32,18 @@ import org.slf4j.LoggerFactory;
  * Runs the {@link Crack} when the player asks ({@code /seedcracker start}; it never starts by itself), picks the blocks
  * and reports in chat. Client thread only.
  *
- * <p>Each attempt searches one chunk's floor or roof (the search needs every one of its blocks to be untouched) and
- * checks hits against the other surface. The first attempt takes the intact chunk farthest from the player, where
- * players are least likely to have dug and, on an old world, the Nether is most likely to be post-1.18. If it finds
- * nothing, the next attempt switches surface and picks a chunk far from the ones already tried.
+ * <p>Each attempt searches the bedrock of one chunk's floor or roof and checks hits against the bedrock of its other
+ * surface. Only bedrock that is there is used: survival players can break it but not place it, so broken bedrock
+ * doesn't get in the way. The first attempt takes the chunk farthest from the player, where players are least likely to
+ * have built and, on an old world, the Nether is most likely to be post-1.18. If it finds nothing, the next attempt
+ * switches surface and picks a chunk far from the ones already tried.
  */
 public final class CrackController {
 	private static final Logger LOGGER = LoggerFactory.getLogger("seed-cracker");
 	/** Chunks one {@code /seedcracker start} tries before giving up. */
 	private static final int ATTEMPTS = 3;
+	/** Bedrock blocks a surface needs to be searched: half of the about 512 it normally has. */
+	private static final int MIN_BEDROCK = 256;
 
 	public enum State {
 		/** Collecting chunks; nothing runs until {@code /seedcracker start}. */
@@ -165,8 +168,7 @@ public final class CrackController {
 	/** Status lines for {@code /seedcracker}. */
 	public static List<Component> status() {
 		List<Component> lines = new ArrayList<>();
-		lines.add(Component.translatable("seed-cracker.status.chunks", BedrockCollector.count(),
-			BedrockCollector.intactCount(Surface.FLOOR), BedrockCollector.intactCount(Surface.ROOF)));
+		lines.add(Component.translatable("seed-cracker.status.chunks", BedrockCollector.count()));
 		lines.add(Component.translatable("seed-cracker.status.overworld_chunks", BedrockCollector.overworldCount()));
 		switch (state) {
 			case WAITING -> lines.add(Component.translatable("seed-cracker.status.waiting"));
@@ -207,12 +209,12 @@ public final class CrackController {
 		Surface first = tried.size() % 2 == 0 ? Surface.FLOOR : Surface.ROOF;
 		for (Surface surface : new Surface[] {first, first.other()}) {
 			Optional<ChunkBedrock> best = chunks.stream()
-				.filter(chunk -> chunk.intact(surface) && !used.contains(usedKey(surface, chunk)))
+				.filter(chunk -> chunk.bedrockCount(surface) >= MIN_BEDROCK && !used.contains(usedKey(surface, chunk)))
 				.max(Comparator.<ChunkBedrock>comparingLong(chunk -> distanceToTried(chunk))
 					.thenComparingLong(chunk -> chunk.distanceSquared(playerX, playerZ)));
 			if (best.isPresent()) {
 				ChunkBedrock chunk = best.get();
-				return new Attempt(surface, chunk, secondary(chunks, chunk, surface.other()));
+				return new Attempt(surface, chunk, chunk.observations(surface.other()));
 			}
 		}
 		return null;
@@ -224,18 +226,6 @@ public final class CrackController {
 			nearest = Math.min(nearest, chunk.distanceSquared(previous.chunk().chunkX(), previous.chunk().chunkZ()));
 		}
 		return nearest;
-	}
-
-	/** The other surface of the same chunk, or of the nearest chunk where it is intact. */
-	private static List<Observation> secondary(List<ChunkBedrock> chunks, ChunkBedrock chunk, Surface surface) {
-		if (chunk.intact(surface)) {
-			return chunk.observations(surface);
-		}
-		return chunks.stream()
-			.filter(other -> other.intact(surface))
-			.min(Comparator.comparingLong(other -> other.distanceSquared(chunk.chunkX(), chunk.chunkZ())))
-			.map(other -> other.observations(surface))
-			.orElse(List.of());
 	}
 
 	private static String usedKey(Surface surface, ChunkBedrock chunk) {
@@ -299,7 +289,7 @@ public final class CrackController {
 		}
 	}
 
-	/** How many of the loaded chunks have exactly the bedrock this seed gives (not counting roofs players broke into). */
+	/** How many of the loaded chunks have no bedrock this seed doesn't give (bedrock players broke doesn't count). */
 	private static Component matchesLine(long seed) {
 		long floorKey = NetherBedrock.surfaceKeyOfWorld(seed, Surface.FLOOR);
 		long roofKey = NetherBedrock.surfaceKeyOfWorld(seed, Surface.ROOF);
@@ -307,7 +297,7 @@ public final class CrackController {
 		int total = 0;
 		for (ChunkBedrock chunk : BedrockCollector.chunks()) {
 			total++;
-			if (chunk.mismatches(Surface.FLOOR, floorKey) == 0 && (!chunk.roofIntact() || chunk.mismatches(Surface.ROOF, roofKey) == 0)) {
+			if (chunk.misplaced(Surface.FLOOR, floorKey) == 0 && chunk.misplaced(Surface.ROOF, roofKey) == 0) {
 				matching++;
 			}
 		}
@@ -320,8 +310,11 @@ public final class CrackController {
 	private static Component overworldLine(long seed) {
 		OverworldCheck.Report report = OverworldCheck.check(seed, BedrockCollector.overworldChunks());
 		LOGGER.info("Overworld check of seed {}: {}", seed, report);
+		if (report.usable() == 0) {
+			return Component.translatable("seed-cracker.message.check_no_bedrock", report.chunks());
+		}
 		return Component.translatable(report.matches() ? "seed-cracker.message.check_match" : "seed-cracker.message.check_mismatch",
-			seedText(seed), report.fitting(), report.chunks());
+			seedText(seed), report.fitting(), report.usable());
 	}
 
 	// ------------------------------------------------------------------ seed hash

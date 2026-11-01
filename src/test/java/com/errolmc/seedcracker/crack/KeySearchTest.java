@@ -16,7 +16,7 @@ class KeySearchTest {
 	void findsTheKeyFromOneChunk() {
 		for (Surface surface : Surface.values()) {
 			long key = NetherBedrock.surfaceKeyOfWorld(SEED, surface);
-			KeySearch search = new KeySearch(surface, Chunks.observe(SEED, surface, 3, -7));
+			KeySearch search = new KeySearch(surface, Chunks.present(SEED, surface, 3, -7));
 			assertTrue(search.expectedFalseKeys() < 1e-9, surface + " sample too weak: " + search.expectedFalseKeys());
 			long prefix = KeySearch.prefixOf(key);
 			List<Long> hits = hits(search, prefix - 5000, prefix + 5000);
@@ -26,11 +26,25 @@ class KeySearchTest {
 		}
 	}
 
+	/** A quarter of a chunk's bedrock is plenty. */
+	@Test
+	void findsTheKeyFromBrokenBedrock() {
+		for (Surface surface : Surface.values()) {
+			long key = NetherBedrock.surfaceKeyOfWorld(SEED, surface);
+			KeySearch search = new KeySearch(surface, Chunks.broken(Chunks.present(SEED, surface, 3, -7), 0.75, 5));
+			assertTrue(search.expectedFalseKeys() < 1e-9, surface + " sample too weak: " + search.expectedFalseKeys());
+			long prefix = KeySearch.prefixOf(key);
+			List<Long> hits = hits(search, prefix - 5000, prefix + 5000);
+			assertTrue(hits.contains(key), surface.toString());
+			assertTrue(hits.stream().allMatch(hit -> Math.abs(hit - key) < 4096), surface + ": " + hits);
+		}
+	}
+
 	@Test
 	void otherSurfaceTellsTheNeighboursApart() {
 		long key = NetherBedrock.surfaceKeyOfWorld(SEED, Surface.FLOOR);
-		List<Observation> roof = Chunks.observe(SEED, Surface.ROOF, 3, -7);
-		KeySearch search = new KeySearch(Surface.FLOOR, Chunks.observe(SEED, Surface.FLOOR, 3, -7));
+		List<Observation> roof = Chunks.present(SEED, Surface.ROOF, 3, -7);
+		KeySearch search = new KeySearch(Surface.FLOOR, Chunks.present(SEED, Surface.FLOOR, 3, -7));
 		long prefix = KeySearch.prefixOf(key);
 		List<Long> fitting = hits(search, prefix - 1, prefix + 2).stream()
 			.filter(hit -> SeedRecovery.structureSeeds(hit, Surface.FLOOR, rootKey -> {
@@ -43,14 +57,20 @@ class KeySearchTest {
 
 	@Test
 	void findsNothingElsewhere() {
-		KeySearch search = new KeySearch(Surface.FLOOR, Chunks.observe(SEED, Surface.FLOOR, 0, 0));
+		KeySearch search = new KeySearch(Surface.FLOOR, Chunks.present(SEED, Surface.FLOOR, 0, 0));
 		assertEquals(List.of(), hits(search, 1L << 30, (1L << 30) + (1L << 20)));
 	}
 
+	/** Bedrock placed where generation put none (only possible in creative). */
 	@Test
 	void missesTheKeyWhenOneBlockIsWrong() {
 		long key = NetherBedrock.surfaceKeyOfWorld(SEED, Surface.FLOOR);
-		List<Observation> observations = Chunks.tamper(Chunks.observe(SEED, Surface.FLOOR, 0, 0), 700);
+		List<Observation> all = Chunks.observe(SEED, Surface.FLOOR, 0, 0);
+		int air = 700;
+		while (all.get(air).bedrock()) {
+			air++;
+		}
+		List<Observation> observations = Chunks.present(Chunks.tamper(all, air));
 		KeySearch search = new KeySearch(Surface.FLOOR, observations);
 		long prefix = KeySearch.prefixOf(key);
 		assertEquals(List.of(), hits(search, prefix - 100, prefix + 100));

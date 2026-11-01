@@ -2,6 +2,7 @@ package com.errolmc.seedcracker.crack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.SplittableRandom;
 
 /** Test data: what a chunk's bedrock layers look like in a world with a given seed. */
 final class Chunks {
@@ -19,6 +20,21 @@ final class Chunks {
 			}
 		}
 		return observations;
+	}
+
+	/** The chunk's bedrock blocks, which is what the client searches with. */
+	static List<Observation> present(long worldSeed, Surface surface, int chunkX, int chunkZ) {
+		return present(observe(worldSeed, surface, chunkX, chunkZ));
+	}
+
+	static List<Observation> present(List<Observation> observations) {
+		return observations.stream().filter(Observation::bedrock).toList();
+	}
+
+	/** Bedrock blocks with a share of them broken at random. */
+	static List<Observation> broken(List<Observation> bedrock, double share, long randomSeed) {
+		SplittableRandom random = new SplittableRandom(randomSeed);
+		return bedrock.stream().filter(o -> random.nextDouble() >= share).toList();
 	}
 
 	/** The same blocks with one outcome flipped, as if a player had broken or placed that bedrock. */

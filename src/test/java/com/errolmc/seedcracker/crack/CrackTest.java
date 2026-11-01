@@ -18,7 +18,7 @@ class CrackTest {
 	void typedSeedConfirmedByHash() {
 		long seed = "minecraft".hashCode();
 		Crack.Outcome outcome = run(seed, Surface.FLOOR, OptionalLong.of(SeedRecovery.obfuscate(seed)),
-			Chunks.observe(seed, Surface.FLOOR, 5, 5), Chunks.observe(seed, Surface.ROOF, 5, 5));
+			Chunks.present(seed, Surface.FLOOR, 5, 5), Chunks.present(seed, Surface.ROOF, 5, 5));
 		assertEquals(List.of(new Crack.Found(seed & JavaLcg.MASK, seed, Crack.Confidence.CONFIRMED)), outcome.found());
 	}
 
@@ -26,7 +26,7 @@ class CrackTest {
 	void neighbourKeysWithoutOtherSurfaceOrHash() {
 		// With nothing to tell the key's near neighbours apart, each comes out as a guess; the right seed is among them.
 		long seed = new Random(98).nextLong();
-		Crack.Outcome outcome = run(seed, Surface.FLOOR, OptionalLong.empty(), Chunks.observe(seed, Surface.FLOOR, 0, 0), List.of());
+		Crack.Outcome outcome = run(seed, Surface.FLOOR, OptionalLong.empty(), Chunks.present(seed, Surface.FLOOR, 0, 0), List.of());
 		assertTrue(outcome.found().stream().anyMatch(found -> found.seed() == seed), outcome.found().toString());
 	}
 
@@ -35,7 +35,7 @@ class CrackTest {
 		long seed = 77L;
 		long prefix = KeySearch.prefixOf(NetherBedrock.surfaceKeyOfWorld(seed, Surface.FLOOR));
 		// The key sits near the start of a window that is many work units long.
-		Crack crack = new Crack(Surface.FLOOR, Chunks.observe(seed, Surface.FLOOR, 0, 0), List.of(),
+		Crack crack = new Crack(Surface.FLOOR, Chunks.present(seed, Surface.FLOOR, 0, 0), List.of(),
 			OptionalLong.of(SeedRecovery.obfuscate(seed)), prefix - 10, prefix + (1L << 30));
 		crack.start(2);
 		Crack.Outcome outcome = await(crack);
@@ -47,7 +47,7 @@ class CrackTest {
 	void roofAsPrimary() {
 		long seed = 8_675_309L;
 		Crack.Outcome outcome = run(seed, Surface.ROOF, OptionalLong.of(SeedRecovery.obfuscate(seed)),
-			Chunks.observe(seed, Surface.ROOF, -40, 12), Chunks.observe(seed, Surface.FLOOR, -40, 12));
+			Chunks.present(seed, Surface.ROOF, -40, 12), Chunks.present(seed, Surface.FLOOR, -40, 12));
 		assertEquals(seed, outcome.best().seed());
 		assertEquals(Crack.Confidence.CONFIRMED, outcome.best().confidence());
 	}
@@ -56,7 +56,7 @@ class CrackTest {
 	void randomSeedWithoutHash() {
 		long seed = new Random(99).nextLong();
 		Crack.Outcome outcome = run(seed, Surface.FLOOR, OptionalLong.empty(),
-			Chunks.observe(seed, Surface.FLOOR, 0, 0), Chunks.observe(seed, Surface.ROOF, 0, 0));
+			Chunks.present(seed, Surface.FLOOR, 0, 0), Chunks.present(seed, Surface.ROOF, 0, 0));
 		assertEquals(seed, outcome.best().seed());
 		assertEquals(Crack.Confidence.RANDOM_SEED_GUESS, outcome.best().confidence());
 	}
@@ -66,21 +66,38 @@ class CrackTest {
 		// A server that hides the seed hash: the low 48 bits still come out, and a random seed is offered.
 		long seed = new Random(100).nextLong();
 		Crack.Outcome outcome = run(seed, Surface.FLOOR, OptionalLong.of(12345),
-			Chunks.observe(seed, Surface.FLOOR, 2, 2), Chunks.observe(seed, Surface.ROOF, 2, 2));
+			Chunks.present(seed, Surface.FLOOR, 2, 2), Chunks.present(seed, Surface.ROOF, 2, 2));
 		assertEquals(seed, outcome.best().seed());
 		assertEquals(Crack.Confidence.RANDOM_SEED_GUESS, outcome.best().confidence());
 		assertTrue(outcome.complete());
 	}
 
+	/** Players broke most of the bedrock, including every block at y 4 (the search's best tests). */
 	@Test
-	void brokenRoofBedrockIsTolerated() {
+	void brokenBedrockDoesNotMatter() {
+		long seed = 31337L;
+		List<Observation> floor = Chunks.broken(Chunks.present(seed, Surface.FLOOR, 1, 1), 0.6, 1).stream()
+			.filter(o -> o.y() != Surface.FLOOR.maxY)
+			.toList();
+		List<Observation> roof = Chunks.broken(Chunks.present(seed, Surface.ROOF, 1, 1), 0.9, 2);
+		Crack.Outcome outcome = run(seed, Surface.FLOOR, OptionalLong.of(SeedRecovery.obfuscate(seed)), floor, roof);
+		assertEquals(new Crack.Found(seed & JavaLcg.MASK, seed, Crack.Confidence.CONFIRMED), outcome.best());
+	}
+
+	/** Bedrock placed in creative on the other surface is tolerated. */
+	@Test
+	void placedRoofBedrockIsTolerated() {
 		long seed = 31337L;
 		List<Observation> roof = Chunks.observe(seed, Surface.ROOF, 1, 1);
-		for (int i = 0; i < 10; i++) {
-			roof = Chunks.tamper(roof, 100 + i * 37);
+		int placed = 0;
+		for (int i = 0; placed < 10; i += 37) {
+			if (!roof.get(i).bedrock()) {
+				roof = Chunks.tamper(roof, i);
+				placed++;
+			}
 		}
 		Crack.Outcome outcome = run(seed, Surface.FLOOR, OptionalLong.of(SeedRecovery.obfuscate(seed)),
-			Chunks.observe(seed, Surface.FLOOR, 1, 1), roof);
+			Chunks.present(seed, Surface.FLOOR, 1, 1), Chunks.present(roof));
 		assertEquals(seed, outcome.best().seed());
 	}
 
@@ -88,7 +105,7 @@ class CrackTest {
 	void wrongOtherSurfaceRejectsTheKey() {
 		long seed = 31337L;
 		Crack.Outcome outcome = run(seed, Surface.FLOOR, OptionalLong.of(SeedRecovery.obfuscate(seed)),
-			Chunks.observe(seed, Surface.FLOOR, 1, 1), Chunks.observe(seed + 1, Surface.ROOF, 1, 1));
+			Chunks.present(seed, Surface.FLOOR, 1, 1), Chunks.present(seed + 1, Surface.ROOF, 1, 1));
 		assertEquals(List.of(), outcome.found());
 		assertTrue(outcome.complete());
 	}
@@ -96,7 +113,7 @@ class CrackTest {
 	@Test
 	void cancel() throws InterruptedException {
 		long seed = 1;
-		Crack crack = new Crack(Surface.FLOOR, Chunks.observe(seed, Surface.FLOOR, 0, 0), List.of(), OptionalLong.empty());
+		Crack crack = new Crack(Surface.FLOOR, Chunks.present(seed, Surface.FLOOR, 0, 0), List.of(), OptionalLong.empty());
 		crack.start(2);
 		Thread.sleep(200);
 		assertNull(crack.outcome());

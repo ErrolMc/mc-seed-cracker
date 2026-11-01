@@ -13,13 +13,15 @@ import java.util.concurrent.atomic.AtomicReference;
  * One run of the cracker on background threads: searches one surface's key from a block sample, checks each hit
  * against the other surface, then works out the world seed.
  *
- * <p>The search is exact, so a single wrong block in the primary sample (a broken or placed bedrock, or a chunk from
- * before 1.18) makes it miss. The secondary sample only filters candidates and tolerates a few wrong blocks.
+ * <p>The search is exact, so a single wrong block in the primary sample makes it miss. The client only puts bedrock that
+ * is there in it: survival players can break bedrock but not place it, so what's left is always where generation put
+ * it. Bedrock placed in creative or a chunk from before 1.18 still makes it miss. The secondary sample only filters
+ * candidates and tolerates a few wrong blocks.
  */
 public final class Crack {
 	/** Prefixes per work unit: small enough for smooth progress and quick cancelling, big enough to not matter. */
 	private static final long UNIT = 1L << 22;
-	/** Share of secondary blocks a candidate may get wrong (players do break roof bedrock). */
+	/** Share of secondary blocks a candidate may get wrong (a few placed in creative). */
 	private static final double SECONDARY_TOLERANCE = 0.03;
 	/** With at least this many secondary blocks, a candidate that fits them is certain enough to stop the search. */
 	private static final int STRONG_SECONDARY = 64;

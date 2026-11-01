@@ -11,7 +11,12 @@ class SearchBenchmark {
 	@Test
 	void fullSpeed() {
 		long seed = 123456789L;
-		List<Observation> floor = Chunks.observe(seed, Surface.FLOOR, 7, 7);
+		measure("floor bedrock", Chunks.present(seed, Surface.FLOOR, 7, 7));
+		// The worst a player can leave a floor: every block at y 4, the search's best tests, broken.
+		measure("floor without y 4", Chunks.present(seed, Surface.FLOOR, 7, 7).stream().filter(o -> o.y() != Surface.FLOOR.maxY).toList());
+	}
+
+	private static void measure(String name, List<Observation> floor) {
 		int threads = Math.max(1, Runtime.getRuntime().availableProcessors() - 1);
 
 		// Warm up the JIT on one thread first.
@@ -28,8 +33,8 @@ class SearchBenchmark {
 		double seconds = (System.nanoTime() - began) / 1e9;
 		double perSecond = prefixes / seconds;
 		double full = KeySearch.PREFIXES / perSecond;
-		System.out.printf("%d threads: %.0f million prefixes/s (%.1f ns per prefix per thread)%n",
-			threads, perSecond / 1e6, seconds * 1e9 * threads / prefixes);
+		System.out.printf("%s, %d blocks, %d threads: %.0f million prefixes/s (%.1f ns per prefix per thread)%n",
+			name, floor.size(), threads, perSecond / 1e6, seconds * 1e9 * threads / prefixes);
 		System.out.printf("whole search: %.0f s worst case, %.0f s on average%n", full, full / 2);
 	}
 
@@ -39,7 +44,7 @@ class SearchBenchmark {
 		long seed = new java.util.Random().nextLong();
 		int threads = Math.max(1, Runtime.getRuntime().availableProcessors() - 1);
 		long key = NetherBedrock.surfaceKeyOfWorld(seed, Surface.FLOOR);
-		Crack crack = new Crack(Surface.FLOOR, Chunks.observe(seed, Surface.FLOOR, -20, 31), Chunks.observe(seed, Surface.ROOF, -20, 31),
+		Crack crack = new Crack(Surface.FLOOR, Chunks.present(seed, Surface.FLOOR, -20, 31), Chunks.present(seed, Surface.ROOF, -20, 31),
 			OptionalLong.of(SeedRecovery.obfuscate(seed)));
 		long began = System.nanoTime();
 		crack.start(threads);

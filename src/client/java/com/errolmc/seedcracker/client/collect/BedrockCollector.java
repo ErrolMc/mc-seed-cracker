@@ -38,7 +38,7 @@ public final class BedrockCollector {
 		if (level.dimension() != Level.NETHER || level.getMinY() != 0) {
 			return;
 		}
-		ChunkBedrock bedrock = read(level, chunk);
+		ChunkBedrock bedrock = read(chunk);
 		CHUNKS.put(ChunkPos.pack(bedrock.chunkX(), bedrock.chunkZ()), bedrock);
 		received++;
 	}
@@ -65,22 +65,12 @@ public final class BedrockCollector {
 		return CHUNKS.size();
 	}
 
-	public static int intactCount(Surface surface) {
-		int count = 0;
-		for (ChunkBedrock chunk : CHUNKS.values()) {
-			if (chunk.intact(surface)) {
-				count++;
-			}
-		}
-		return count;
-	}
-
 	/** Chunk packets seen so far; goes up while the server is still sending the area. */
 	public static int received() {
 		return received;
 	}
 
-	static ChunkBedrock read(ClientLevel level, LevelChunk chunk) {
+	static ChunkBedrock read(LevelChunk chunk) {
 		ChunkPos pos = chunk.getPos();
 		int minX = pos.getMinBlockX();
 		int minZ = pos.getMinBlockZ();
@@ -88,8 +78,6 @@ public final class BedrockCollector {
 
 		BitSet floor = new BitSet(Surface.FLOOR.layers() * ChunkBedrock.BLOCKS_PER_LAYER);
 		BitSet roof = new BitSet(Surface.ROOF.layers() * ChunkBedrock.BLOCKS_PER_LAYER);
-		boolean floorIntact = true;
-		boolean roofIntact = true;
 		for (int z = 0; z < 16; z++) {
 			for (int x = 0; x < 16; x++) {
 				for (Surface surface : Surface.values()) {
@@ -100,18 +88,11 @@ public final class BedrockCollector {
 						}
 					}
 				}
-				floorIntact &= chunk.getBlockState(at.set(minX + x, Surface.FLOOR.solidY, minZ + z)).is(Blocks.BEDROCK);
-				roofIntact &= chunk.getBlockState(at.set(minX + x, Surface.ROOF.solidY, minZ + z)).is(Blocks.BEDROCK);
 			}
 		}
-		// Nothing generates above the roof, so any block up there was put there by a player.
-		for (int section = level.getSectionIndex(Surface.ROOF.solidY + 1); section < level.getSectionsCount(); section++) {
-			roofIntact &= chunk.getSection(section).hasOnlyAir();
-		}
-		return new ChunkBedrock(pos.x(), pos.z(), floor, roof, floorIntact, roofIntact);
+		return new ChunkBedrock(pos.x(), pos.z(), floor, roof);
 	}
 
-	/** Only chunks whose y -64 layer is complete; a gap there means it was broken into in creative. */
 	private static void readOverworld(LevelChunk chunk) {
 		ChunkPos pos = chunk.getPos();
 		long packed = ChunkPos.pack(pos.x(), pos.z());
@@ -124,10 +105,6 @@ public final class BedrockCollector {
 		BitSet bedrock = new BitSet(OverworldCheck.BLOCKS);
 		for (int z = 0; z < 16; z++) {
 			for (int x = 0; x < 16; x++) {
-				if (!chunk.getBlockState(at.set(minX + x, OverworldBedrock.SOLID_Y, minZ + z)).is(Blocks.BEDROCK)) {
-					OVERWORLD.remove(packed);
-					return;
-				}
 				for (int y = OverworldBedrock.MIN_Y; y <= OverworldBedrock.MAX_Y; y++) {
 					if (chunk.getBlockState(at.set(minX + x, y, minZ + z)).is(Blocks.BEDROCK)) {
 						bedrock.set(OverworldCheck.index(y, x, z));
